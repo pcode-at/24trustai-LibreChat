@@ -3,6 +3,7 @@ import { EModelEndpoint, isDocumentSupportedProvider } from './schemas';
 import { getEndpointFileConfig, mergeFileConfig } from './file-config';
 import {
   allowedAddressesSchema,
+  allowedDomainsSchema,
   configSchema,
   excludedKeys,
   resolveEndpointType,
@@ -557,5 +558,99 @@ describe('webSearchSchema', () => {
         },
       }),
     ).toThrow();
+  });
+});
+
+describe('allowedDomainsSchema', () => {
+  const ENV_VARS = [
+    'ALLOWED_DOMAINS',
+    'ALLOWED_DOMAINS_LIST',
+    'ALLOWED_DOMAIN_SINGLE',
+    'ALLOWED_DOMAIN_QUOTED',
+  ];
+
+  afterEach(() => {
+    ENV_VARS.forEach((name) => delete process.env[name]);
+  });
+
+  it('leaves literal domains unchanged', () => {
+    expect(allowedDomainsSchema.parse(['https://a.example.com', 'https://b.example.com'])).toEqual([
+      'https://a.example.com',
+      'https://b.example.com',
+    ]);
+  });
+
+  it('resolves a single ${VAR} array entry', () => {
+    process.env.ALLOWED_DOMAIN_SINGLE = 'https://resolved.example.com';
+    expect(allowedDomainsSchema.parse(['${ALLOWED_DOMAIN_SINGLE}'])).toEqual([
+      'https://resolved.example.com',
+    ]);
+  });
+
+  it('expands a comma-separated env list into individual domains', () => {
+    process.env.ALLOWED_DOMAINS_LIST = 'https://a.com,https://b.com,https://c.com';
+    expect(allowedDomainsSchema.parse(['${ALLOWED_DOMAINS_LIST}'])).toEqual([
+      'https://a.com',
+      'https://b.com',
+      'https://c.com',
+    ]);
+  });
+
+  it('expands a bracket-wrapped, spaced env list', () => {
+    process.env.ALLOWED_DOMAINS_LIST = '[https://a.com, https://b.com]';
+    expect(allowedDomainsSchema.parse(['${ALLOWED_DOMAINS_LIST}'])).toEqual([
+      'https://a.com',
+      'https://b.com',
+    ]);
+  });
+
+  it('accepts a scalar string value', () => {
+    process.env.ALLOWED_DOMAINS = 'https://a.com,https://b.com';
+    expect(allowedDomainsSchema.parse('${ALLOWED_DOMAINS}')).toEqual([
+      'https://a.com',
+      'https://b.com',
+    ]);
+  });
+
+  it('combines literal and env entries', () => {
+    process.env.ALLOWED_DOMAINS_LIST = 'https://env-a.com,https://env-b.com';
+    expect(allowedDomainsSchema.parse(['https://literal.com', '${ALLOWED_DOMAINS_LIST}'])).toEqual([
+      'https://literal.com',
+      'https://env-a.com',
+      'https://env-b.com',
+    ]);
+  });
+
+  it('strips wrapping quotes from resolved values', () => {
+    process.env.ALLOWED_DOMAIN_QUOTED = '"https://quoted.com",\'https://single.com\'';
+    expect(allowedDomainsSchema.parse(['${ALLOWED_DOMAIN_QUOTED}'])).toEqual([
+      'https://quoted.com',
+      'https://single.com',
+    ]);
+  });
+
+  it('keeps the placeholder for an undefined env var (fail-closed)', () => {
+    expect(allowedDomainsSchema.parse(['${UNDEFINED_ALLOWED_DOMAINS}'])).toEqual([
+      '${UNDEFINED_ALLOWED_DOMAINS}',
+    ]);
+  });
+
+  it('returns undefined when value is omitted', () => {
+    expect(allowedDomainsSchema.parse(undefined)).toBeUndefined();
+  });
+
+  it('resolves env references through configSchema for mcpSettings', () => {
+    process.env.ALLOWED_DOMAINS_LIST = 'http://internal:8080,https://secure.api.com';
+    const result = configSchema.safeParse({
+      version: '1.0',
+      mcpSettings: { allowedDomains: ['${ALLOWED_DOMAINS_LIST}'] },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mcpSettings?.allowedDomains).toEqual([
+        'http://internal:8080',
+        'https://secure.api.com',
+      ]);
+    }
   });
 });
