@@ -476,4 +476,73 @@ describe('loadCustomConfig', () => {
       ]);
     });
   });
+
+  describe('allowedDomains env-variable resolution', () => {
+    afterEach(() => {
+      delete process.env.MCP_ALLOWED_DOMAINS;
+      delete process.env.ACTIONS_ALLOWED_DOMAINS;
+    });
+
+    it('resolves ${VAR} array entries and expands comma-separated env lists', async () => {
+      process.env.MCP_ALLOWED_DOMAINS = 'http://internal:8080,https://secure.api.com';
+      const config = {
+        version: '1.0',
+        mcpSettings: {
+          allowedDomains: ['${MCP_ALLOWED_DOMAINS}', 'https://literal.example.com'],
+        },
+      };
+      loadYaml.mockReturnValue(config);
+
+      const result = await loadCustomConfig();
+      expect(result.mcpSettings.allowedDomains).toEqual([
+        'http://internal:8080',
+        'https://secure.api.com',
+        'https://literal.example.com',
+      ]);
+    });
+
+    it('resolves a scalar ${VAR} that holds a comma-separated list', async () => {
+      process.env.MCP_ALLOWED_DOMAINS = '[https://a.com, https://b.com]';
+      const config = {
+        version: '1.0',
+        mcpSettings: {
+          allowedDomains: '${MCP_ALLOWED_DOMAINS}',
+        },
+      };
+      loadYaml.mockReturnValue(config);
+
+      const result = await loadCustomConfig();
+      expect(result.mcpSettings.allowedDomains).toEqual(['https://a.com', 'https://b.com']);
+    });
+
+    it('resolves env references for actions.allowedDomains', async () => {
+      process.env.ACTIONS_ALLOWED_DOMAINS = 'https://actions.example.com';
+      const config = {
+        version: '1.0',
+        actions: {
+          allowedDomains: ['${ACTIONS_ALLOWED_DOMAINS}'],
+        },
+      };
+      loadYaml.mockReturnValue(config);
+
+      const result = await loadCustomConfig();
+      expect(result.actions.allowedDomains).toEqual(['https://actions.example.com']);
+    });
+
+    it('leaves literal domains unchanged', async () => {
+      const config = {
+        version: '1.0',
+        mcpSettings: {
+          allowedDomains: ['https://one.example.com', 'https://two.example.com'],
+        },
+      };
+      loadYaml.mockReturnValue(config);
+
+      const result = await loadCustomConfig();
+      expect(result.mcpSettings.allowedDomains).toEqual([
+        'https://one.example.com',
+        'https://two.example.com',
+      ]);
+    });
+  });
 });
