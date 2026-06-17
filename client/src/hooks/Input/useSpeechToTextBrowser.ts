@@ -102,6 +102,17 @@ const useSpeechToTextBrowser = (
     }
   };
 
+  const clearRecording = () => {
+    SpeechRecognition.abortListening();
+    resetTranscript();
+    lastInterim.current = null;
+    lastTranscript.current = null;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey && e.altKey && e.code === 'KeyL' && !isBrowserSTTEnabled) {
@@ -118,6 +129,7 @@ const useSpeechToTextBrowser = (
     isLoading: false,
     startRecording: toggleListening,
     stopRecording: toggleListening,
+    clearRecording,
   };
 };
 

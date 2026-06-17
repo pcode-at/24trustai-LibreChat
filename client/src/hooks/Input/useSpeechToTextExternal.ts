@@ -18,6 +18,7 @@ const useSpeechToTextExternal = (
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const audioChunksRef = useRef<Blob[]>([]);
+  const isCancelledRef = useRef(false);
   const [permission, setPermission] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isRequestBeingMade, setIsRequestBeingMade] = useState(false);
@@ -110,6 +111,13 @@ const useSpeechToTextExternal = (
   };
 
   const handleStop = () => {
+    if (isCancelledRef.current) {
+      isCancelledRef.current = false;
+      audioChunksRef.current = [];
+      cleanup();
+      return;
+    }
+
     if (audioChunksRef.current.length > 0) {
       const audioBlob = new Blob(audioChunksRef.current, { type: audioMimeType });
       const fileExtension = getFileExtension(audioMimeType);
@@ -241,6 +249,26 @@ const useSpeechToTextExternal = (
     stopRecording();
   };
 
+  const externalClearRecording = () => {
+    isCancelledRef.current = true;
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      stopRecording();
+      return;
+    }
+
+    audioChunksRef.current = [];
+    audioStream.current?.getTracks().forEach((track) => track.stop());
+    audioStream.current = null;
+    if (animationFrameIdRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameIdRef.current);
+      animationFrameIdRef.current = null;
+    }
+    cleanup();
+    setIsListening(false);
+    isCancelledRef.current = false;
+  };
+
   const handleKeyDown = async (e: KeyboardEvent) => {
     if (e.shiftKey && e.altKey && e.code === 'KeyL' && isExternalSTTEnabled) {
       if (!window.MediaRecorder) {
@@ -275,6 +303,7 @@ const useSpeechToTextExternal = (
     isListening,
     externalStopRecording,
     externalStartRecording,
+    externalClearRecording,
     isLoading: isProcessing,
   };
 };
