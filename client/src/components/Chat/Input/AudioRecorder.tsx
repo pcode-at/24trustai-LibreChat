@@ -83,12 +83,10 @@ export default memo(function AudioRecorder({
     [setValue, speechToTextEndpoint],
   );
 
-  const { isListening, isLoading, startRecording, stopRecording, clearRecording } = useSpeechToText(
-    setText,
-    onTranscriptionComplete,
-  );
+  const { isListening, isLoading, recordingStream, startRecording, stopRecording, clearRecording } =
+    useSpeechToText(setText, onTranscriptionComplete);
 
-  const { levels, recordingTime } = useAudioLevelMonitor(isListening === true);
+  const { levels, recordingTime } = useAudioLevelMonitor(isListening === true, recordingStream);
 
   const handleStartRecording = async () => {
     existingTextRef.current = getValues('text') || '';

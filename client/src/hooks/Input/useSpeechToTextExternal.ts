@@ -3,12 +3,14 @@ import { useRecoilState } from 'recoil';
 import { useToastContext } from '@librechat/client';
 import { useSpeechToTextMutation } from '~/data-provider';
 import useGetAudioSettings from './useGetAudioSettings';
+import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 const useSpeechToTextExternal = (
   setText: (text: string) => void,
   onTranscriptionComplete: (text: string) => void,
 ) => {
+  const localize = useLocalize();
   const { showToast } = useToastContext();
   const { speechToTextEndpoint } = useGetAudioSettings();
   const isExternalSTTEnabled = speechToTextEndpoint === 'external';
@@ -19,6 +21,7 @@ const useSpeechToTextExternal = (
   const isCancelledRef = useRef(false);
   const [permission, setPermission] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [recordingStream, setRecordingStream] = useState<MediaStream | null>(null);
   const [isRequestBeingMade, setIsRequestBeingMade] = useState(false);
   const [audioMimeType, setAudioMimeType] = useState<string>(() => getBestSupportedMimeType());
 
@@ -94,6 +97,11 @@ const useSpeechToTextExternal = (
   };
 
   const getMicrophonePermission = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast({ message: localize('com_ui_speech_requires_secure_context'), status: 'error' });
+      setPermission(false);
+      return;
+    }
     try {
       const streamData = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -157,6 +165,7 @@ const useSpeechToTextExternal = (
         });
         mediaRecorderRef.current.addEventListener('stop', handleStop);
         mediaRecorderRef.current.start(100);
+        setRecordingStream(audioStream.current);
         setIsListening(true);
       } catch (error) {
         showToast({ message: `Error starting recording: ${error}`, status: 'error' });
@@ -176,6 +185,7 @@ const useSpeechToTextExternal = (
 
       audioStream.current?.getTracks().forEach((track) => track.stop());
       audioStream.current = null;
+      setRecordingStream(null);
 
       setIsListening(false);
     } else {
@@ -215,6 +225,7 @@ const useSpeechToTextExternal = (
     audioChunksRef.current = [];
     audioStream.current?.getTracks().forEach((track) => track.stop());
     audioStream.current = null;
+    setRecordingStream(null);
     cleanup();
     setIsListening(false);
     isCancelledRef.current = false;
@@ -252,6 +263,7 @@ const useSpeechToTextExternal = (
 
   return {
     isListening,
+    recordingStream,
     externalStopRecording,
     externalStartRecording,
     externalClearRecording,
