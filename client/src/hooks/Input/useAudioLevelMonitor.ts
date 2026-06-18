@@ -53,6 +53,9 @@ const useAudioLevelMonitor = (
 
         const audioContext = new AudioContext();
         audioContextRef.current = audioContext;
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
         const source = audioContext.createMediaStreamSource(stream);
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 1024;

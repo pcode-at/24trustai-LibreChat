@@ -60,8 +60,8 @@ function RecordingControls({
         {levels.map((level, index) => (
           <span
             key={index}
-            className="min-w-0 flex-1 rounded-full bg-text-secondary/70 transition-[height] duration-75"
-            style={{ height: `${Math.max(8, Math.min(100, level * 100))}%` }}
+            className="min-w-0 flex-1 rounded-full bg-text-secondary opacity-80 transition-[height] duration-75"
+            style={{ height: `${Math.max(12, Math.min(100, level * 100))}%` }}
           />
         ))}
       </div>

@@ -13,8 +13,6 @@ const useSpeechToTextExternal = (
   const { speechToTextEndpoint } = useGetAudioSettings();
   const isExternalSTTEnabled = speechToTextEndpoint === 'external';
   const audioStream = useRef<MediaStream | null>(null);
-  const animationFrameIdRef = useRef<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const audioChunksRef = useRef<Blob[]>([]);
@@ -24,11 +22,9 @@ const useSpeechToTextExternal = (
   const [isRequestBeingMade, setIsRequestBeingMade] = useState(false);
   const [audioMimeType, setAudioMimeType] = useState<string>(() => getBestSupportedMimeType());
 
-  const [minDecibels] = useRecoilState(store.decibelValue);
   const [autoSendText] = useRecoilState(store.autoSendText);
   const [languageSTT] = useRecoilState<string>(store.languageSTT);
   const [speechToText] = useRecoilState<boolean>(store.speechToText);
-  const [autoTranscribeAudio] = useRecoilState<boolean>(store.autoTranscribeAudio);
 
   const { mutate: processAudio, isLoading: isProcessing } = useSpeechToTextMutation({
     onSuccess: (data) => {
@@ -137,39 +133,6 @@ const useSpeechToTextExternal = (
     }
   };
 
-  const monitorSilence = (stream: MediaStream, stopRecording: () => void) => {
-    const audioContext = new AudioContext();
-    const audioStreamSource = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.minDecibels = minDecibels;
-    audioStreamSource.connect(analyser);
-
-    const bufferLength = analyser.frequencyBinCount;
-    const domainData = new Uint8Array(bufferLength);
-    let lastSoundTime = Date.now();
-
-    const detectSound = () => {
-      analyser.getByteFrequencyData(domainData);
-      const isSoundDetected = domainData.some((value) => value > 0);
-
-      if (isSoundDetected) {
-        lastSoundTime = Date.now();
-      }
-
-      const timeSinceLastSound = Date.now() - lastSoundTime;
-      const isOverSilenceThreshold = timeSinceLastSound > 3000;
-
-      if (isOverSilenceThreshold) {
-        stopRecording();
-        return;
-      }
-
-      animationFrameIdRef.current = window.requestAnimationFrame(detectSound);
-    };
-
-    animationFrameIdRef.current = window.requestAnimationFrame(detectSound);
-  };
-
   const startRecording = async () => {
     if (isRequestBeingMade) {
       showToast({ message: 'A request is already being made. Please wait.', status: 'warning' });
@@ -194,9 +157,6 @@ const useSpeechToTextExternal = (
         });
         mediaRecorderRef.current.addEventListener('stop', handleStop);
         mediaRecorderRef.current.start(100);
-        if (!audioContextRef.current && autoTranscribeAudio && speechToText) {
-          monitorSilence(audioStream.current, stopRecording);
-        }
         setIsListening(true);
       } catch (error) {
         showToast({ message: `Error starting recording: ${error}`, status: 'error' });
@@ -216,11 +176,6 @@ const useSpeechToTextExternal = (
 
       audioStream.current?.getTracks().forEach((track) => track.stop());
       audioStream.current = null;
-
-      if (animationFrameIdRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameIdRef.current);
-        animationFrameIdRef.current = null;
-      }
 
       setIsListening(false);
     } else {
@@ -260,10 +215,6 @@ const useSpeechToTextExternal = (
     audioChunksRef.current = [];
     audioStream.current?.getTracks().forEach((track) => track.stop());
     audioStream.current = null;
-    if (animationFrameIdRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameIdRef.current);
-      animationFrameIdRef.current = null;
-    }
     cleanup();
     setIsListening(false);
     isCancelledRef.current = false;

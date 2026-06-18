@@ -19,7 +19,6 @@ export default memo(function AudioRecorder({
   disabled,
   ask,
   methods,
-  textAreaRef,
   isSubmitting,
 }: {
   disabled: boolean;
@@ -90,10 +89,6 @@ export default memo(function AudioRecorder({
   );
 
   const { levels, recordingTime } = useAudioLevelMonitor(isListening === true);
-
-  if (!textAreaRef.current) {
-    return null;
-  }
 
   const handleStartRecording = async () => {
     existingTextRef.current = getValues('text') || '';

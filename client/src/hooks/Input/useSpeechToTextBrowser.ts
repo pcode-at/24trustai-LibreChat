@@ -23,7 +23,6 @@ const useSpeechToTextBrowser = (
   const timeoutRef = useRef<NodeJS.Timeout | null>();
   const [autoSendText] = useRecoilState(store.autoSendText);
   const [languageSTT] = useRecoilState<string>(store.languageSTT);
-  const [autoTranscribeAudio] = useRecoilState<boolean>(store.autoTranscribeAudio);
 
   const {
     listening,
@@ -97,7 +96,7 @@ const useSpeechToTextBrowser = (
     } else {
       SpeechRecognition.startListening({
         language: languageSTT,
-        continuous: autoTranscribeAudio,
+        continuous: true,
       });
     }
   };
