@@ -3,31 +3,31 @@ import { useRecoilState } from 'recoil';
 import { useToastContext } from '@librechat/client';
 import { useSpeechToTextMutation } from '~/data-provider';
 import useGetAudioSettings from './useGetAudioSettings';
+import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 const useSpeechToTextExternal = (
   setText: (text: string) => void,
   onTranscriptionComplete: (text: string) => void,
 ) => {
+  const localize = useLocalize();
   const { showToast } = useToastContext();
   const { speechToTextEndpoint } = useGetAudioSettings();
   const isExternalSTTEnabled = speechToTextEndpoint === 'external';
   const audioStream = useRef<MediaStream | null>(null);
-  const animationFrameIdRef = useRef<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const audioChunksRef = useRef<Blob[]>([]);
+  const isCancelledRef = useRef(false);
   const [permission, setPermission] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [recordingStream, setRecordingStream] = useState<MediaStream | null>(null);
   const [isRequestBeingMade, setIsRequestBeingMade] = useState(false);
   const [audioMimeType, setAudioMimeType] = useState<string>(() => getBestSupportedMimeType());
 
-  const [minDecibels] = useRecoilState(store.decibelValue);
   const [autoSendText] = useRecoilState(store.autoSendText);
   const [languageSTT] = useRecoilState<string>(store.languageSTT);
   const [speechToText] = useRecoilState<boolean>(store.speechToText);
-  const [autoTranscribeAudio] = useRecoilState<boolean>(store.autoTranscribeAudio);
 
   const { mutate: processAudio, isLoading: isProcessing } = useSpeechToTextMutation({
     onSuccess: (data) => {
@@ -97,6 +97,11 @@ const useSpeechToTextExternal = (
   };
 
   const getMicrophonePermission = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast({ message: localize('com_ui_speech_requires_secure_context'), status: 'error' });
+      setPermission(false);
+      return;
+    }
     try {
       const streamData = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -110,6 +115,13 @@ const useSpeechToTextExternal = (
   };
 
   const handleStop = () => {
+    if (isCancelledRef.current) {
+      isCancelledRef.current = false;
+      audioChunksRef.current = [];
+      cleanup();
+      return;
+    }
+
     if (audioChunksRef.current.length > 0) {
       const audioBlob = new Blob(audioChunksRef.current, { type: audioMimeType });
       const fileExtension = getFileExtension(audioMimeType);
@@ -127,39 +139,6 @@ const useSpeechToTextExternal = (
     } else {
       showToast({ message: 'The audio was too short', status: 'warning' });
     }
-  };
-
-  const monitorSilence = (stream: MediaStream, stopRecording: () => void) => {
-    const audioContext = new AudioContext();
-    const audioStreamSource = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.minDecibels = minDecibels;
-    audioStreamSource.connect(analyser);
-
-    const bufferLength = analyser.frequencyBinCount;
-    const domainData = new Uint8Array(bufferLength);
-    let lastSoundTime = Date.now();
-
-    const detectSound = () => {
-      analyser.getByteFrequencyData(domainData);
-      const isSoundDetected = domainData.some((value) => value > 0);
-
-      if (isSoundDetected) {
-        lastSoundTime = Date.now();
-      }
-
-      const timeSinceLastSound = Date.now() - lastSoundTime;
-      const isOverSilenceThreshold = timeSinceLastSound > 3000;
-
-      if (isOverSilenceThreshold) {
-        stopRecording();
-        return;
-      }
-
-      animationFrameIdRef.current = window.requestAnimationFrame(detectSound);
-    };
-
-    animationFrameIdRef.current = window.requestAnimationFrame(detectSound);
   };
 
   const startRecording = async () => {
@@ -186,9 +165,7 @@ const useSpeechToTextExternal = (
         });
         mediaRecorderRef.current.addEventListener('stop', handleStop);
         mediaRecorderRef.current.start(100);
-        if (!audioContextRef.current && autoTranscribeAudio && speechToText) {
-          monitorSilence(audioStream.current, stopRecording);
-        }
+        setRecordingStream(audioStream.current);
         setIsListening(true);
       } catch (error) {
         showToast({ message: `Error starting recording: ${error}`, status: 'error' });
@@ -208,11 +185,7 @@ const useSpeechToTextExternal = (
 
       audioStream.current?.getTracks().forEach((track) => track.stop());
       audioStream.current = null;
-
-      if (animationFrameIdRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameIdRef.current);
-        animationFrameIdRef.current = null;
-      }
+      setRecordingStream(null);
 
       setIsListening(false);
     } else {
@@ -239,6 +212,23 @@ const useSpeechToTextExternal = (
     }
 
     stopRecording();
+  };
+
+  const externalClearRecording = () => {
+    isCancelledRef.current = true;
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      stopRecording();
+      return;
+    }
+
+    audioChunksRef.current = [];
+    audioStream.current?.getTracks().forEach((track) => track.stop());
+    audioStream.current = null;
+    setRecordingStream(null);
+    cleanup();
+    setIsListening(false);
+    isCancelledRef.current = false;
   };
 
   const handleKeyDown = async (e: KeyboardEvent) => {
@@ -273,8 +263,10 @@ const useSpeechToTextExternal = (
 
   return {
     isListening,
+    recordingStream,
     externalStopRecording,
     externalStartRecording,
+    externalClearRecording,
     isLoading: isProcessing,
   };
 };
