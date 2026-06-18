@@ -819,8 +819,8 @@ const speechTab = z
       .optional()
       .or(
         z.object({
-          /** Keep in sync with STTProviders enum (defined below — cannot reference due to eval order) */
-          engineSTT: z.enum(['openai', 'azureOpenAI']).optional(),
+          /** Client STT engine default. Keep in sync with STTEndpoints ('browser' | 'external'). */
+          engineSTT: z.enum(['browser', 'external']).optional(),
           languageSTT: z.string().optional(),
           autoTranscribeAudio: z.boolean().optional(),
           decibelValue: z.number().optional(),
